@@ -1,0 +1,82 @@
+---
+title: "Predict the Performance of Participants Doing Weight Lifting"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r include = FALSE}
+library(caret); library(stringr); library(dplyr); library(randomForest); library(rpart); library(rpart.plot)
+```
+
+## Overview
+The goal of this project is to predict the manner in which the participants did the weight lifting exercise. That is the "classe" variable in the training set. The dataset sourced from  http://groupware.les.inf.puc-rio.br/har.
+
+
+####Download the dataset and save as training and test respectively
+```{r}
+trainingUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+training <- read.csv(trainingUrl, header = TRUE, sep = ",")
+test <- read.csv(testUrl, header = TRUE, sep = ",")
+set.seed(888520)
+```
+
+####Scrutinise the dataset...then clean a bit
+```{r}
+#through the summary() function we can observe many predictors contain NA's, empty fields or #DIV/0! which is not useful for further analysis
+training[ training == "" ] <- NA #replace "" & #DIV/0 with NA
+training[ training == '#DIV/0'] <- NA
+table(colSums(is.na(training))) #100 predictors contain 19216 NA's
+training <- training[, colSums(is.na(training)) < 19216] #remove columns that contains too many NAs
+
+#Do the same to test dataset
+test <- test[, colSums(is.na(test)) == 0]
+
+badcolumns <- nearZeroVar(training, saveMetrics = TRUE)
+training <- training[, badcolumns$nzv == FALSE]
+test <- test[, badcolumns$nzv == FALSE]
+
+#Remove the ID variables
+training <- training[,-1]
+test <- test[,-1]
+```
+
+####Cross Validation
+```{r}
+inTrain <- createDataPartition(training$classe, p = 0.75, list = FALSE)
+subTrain <- training[inTrain,]
+subTest <- training[-inTrain,] #subset to perform cross validation
+```
+
+####Model Building: (1) rpart
+```{r}
+mod1 <- rpart(classe ~ ., data = subTrain, method = "class")
+prediction1 <- predict(mod1, subTest, type = "class")
+confusionMatrix(prediction1, subTest$classe)
+```
+
+####Model Building: (2) random forest
+```{r}
+mod2 <- randomForest(classe ~ ., data = subTrain, method = "class")
+prediction2 <- predict(mod2, subTest, type = "class")
+confusionMatrix(prediction2, subTest$classe)
+```
+The result of random forest model is better than that of a decision tree, of 99.94% accuracy. The decision is to use random forest (mod2) for further testing. 
+The out of sample error expected to be very small when the model get tested on the original test file.
+
+####Use the random forest model to test the original test set.
+```{r}
+#Make sure the levels between train and test dataset match
+for(i in 1:ncol(subTrain)) {
+  
+    levels(test[,i]) <- levels(subTrain[,i])
+  
+}
+
+predictrf <- predict(mod2, test, type = "class")
+
+```
+
